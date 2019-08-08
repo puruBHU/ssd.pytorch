@@ -1,8 +1,10 @@
 import torch
 from torch.autograd import Function
-from ..box_utils import decode, nms
-from data import voc as cfg
-
+from box_utils import decode, nms
+from config import voc as cfg
+import numpy as np
+from SSD_generate_anchors import generate_ssd_priors
+import collections
 
 class Detect(Function):
     """At test time, Detect is the final layer of SSD.  Decode location preds,
@@ -60,3 +62,34 @@ class Detect(Function):
         _, rank = idx.sort(1)
         flt[(rank < self.top_k).unsqueeze(-1).expand_as(flt)].fill_(0)
         return output
+
+if __name__=='__main__':
+    
+    SSDBoxSizes = collections.namedtuple('SSDBoxSizes', ['min', 'max'])
+
+    Spec = collections.namedtuple('Spec', ['feature_map_size', 'shrinkage', 'box_sizes', 
+                                           'aspect_ratios'])
+
+# the SSD orignal specs
+    specs = [
+        Spec(38, 8, SSDBoxSizes(30, 60), [2]),
+        Spec(19, 16, SSDBoxSizes(60, 111), [2, 3]),
+        Spec(10, 32, SSDBoxSizes(111, 162), [2, 3]),
+        Spec(5, 64, SSDBoxSizes(162, 213), [2, 3]),
+        Spec(3, 100, SSDBoxSizes(213, 264), [2]),
+        Spec(1, 300, SSDBoxSizes(264, 315), [2])
+    ]
+
+    priors = generate_ssd_priors(specs)
+    priors_th  = torch.Tensor(priors)
+#    priors_th.unsqueeze_(0)
+    
+    loc_data = np.random.randn(4, 8732 , 4)
+    conf_data = np.random.randint(low=0, high =1, size=(4 , 8732, 21), dtype=np.int16)
+    
+    loc_data_th = torch.Tensor(loc_data)
+    conf_data_th = torch.Tensor(conf_data).view(-1, 21)
+    
+    
+    hello = Detect(num_classes=21, bkg_label=None, top_k=200, conf_thresh=0.5, nms_thresh=0.6)
+    test   = hello.forward(loc_data= loc_data_th, conf_data=conf_data_th, prior_data=priors_th)
